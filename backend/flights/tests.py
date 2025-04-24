@@ -4,7 +4,7 @@ from .models import Aircraft, Flight
 
 class FlightTests(APITestCase):
     def setUp(self):
-        # Create test data before each test
+        # Create the test data before each test
         aircraft = Aircraft.objects.create(
             model="Test Aircraft",
             capacity=5,
@@ -49,3 +49,21 @@ class FlightTests(APITestCase):
         response = self.client.post('/api/flights/flights/', data)
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         self.assertEqual(Flight.objects.count(), 2)
+
+    def test_invalid_flight_dates(self):
+        aircraft = Aircraft.objects.first()
+        data = {
+            "flight_number": "TEST303",
+            "origin": "New Origin",
+            "destination": "New Destination",
+            "departure_time": "2025-05-21T12:00:00Z",
+            "arrival_time": "2025-05-21T10:00:00Z",  # Arrival before departure
+            "aircraft": aircraft.id,
+            "capacity": 5,
+            "seats_available": 5,
+            "price": 200.00,
+            "status": "scheduled"
+        }
+        response = self.client.post('/api/flights/flights/', data, format='json')
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("Arrival time must be after departure time", str(response.data))

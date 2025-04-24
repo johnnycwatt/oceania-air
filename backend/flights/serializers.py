@@ -15,3 +15,10 @@ class FlightSerializer(serializers.ModelSerializer):
             'id', 'flight_number', 'origin', 'destination', 'departure_time',
             'arrival_time', 'aircraft', 'capacity', 'seats_available', 'price', 'status'
         ]
+
+    def validate(self, data):
+        if data['departure_time'] >= data['arrival_time']:
+            raise serializers.ValidationError("Arrival time must be after departure time.")
+        if data['capacity'] <= 0:
+            raise serializers.ValidationError("Capacity must be positive.")
+        return data
