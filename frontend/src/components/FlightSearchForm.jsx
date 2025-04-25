@@ -2,42 +2,48 @@ import React, { useState, useEffect } from 'react';
 import { Form, Button, Row, Col } from 'react-bootstrap';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
+import DatePicker from 'react-datepicker';
+import 'react-datepicker/dist/react-datepicker.css';
 
 function FlightSearchForm({ isWidget = false }) {
-  // State variables
-  const [airports, setAirports] = useState([]); // Initialize as an empty array
-  const [departure, setDeparture] = useState(''); // ICAO code of departure airport
-  const [arrival, setArrival] = useState(''); // ICAO code of arrival airport
+  const [airports, setAirports] = useState([]);
+  const [departure, setDeparture] = useState('');
+  const [arrival, setArrival] = useState('');
   const [tripType, setTripType] = useState('one-way');
-  const [departureDate, setDepartureDate] = useState('');
-  const [returnDate, setReturnDate] = useState('');
+  const [departureDate, setDepartureDate] = useState(null); // Use null for DatePicker
+  const [returnDate, setReturnDate] = useState(null); // Use null for DatePicker
   const [passengers, setPassengers] = useState(1);
   const [expanded, setExpanded] = useState(!isWidget);
+  const [departureTimezone, setDepartureTimezone] = useState('');
+  const [flexibleDates, setFlexibleDates] = useState(false);
 
   const navigate = useNavigate();
-  const today = new Date().toISOString().split('T')[0];
+  const today = new Date();
 
-  // Fetch airports when component mounts
+  // Fetch airports on mount
   useEffect(() => {
     const fetchAirports = async () => {
       try {
         const response = await axios.get('/api/flights/airports/');
-        // Ensure response.data is an array before setting state
         if (Array.isArray(response.data)) {
           setAirports(response.data);
         } else {
-          console.error('Expected an array of airports, but received:', response.data);
-          setAirports([]); // Fallback to empty array
+          console.error('Expected an array of airports:', response.data);
+          setAirports([]);
         }
       } catch (error) {
         console.error('Error fetching airports:', error);
-        setAirports([]); // Fallback to empty array on error
+        setAirports([]);
       }
     };
     fetchAirports();
-  }, []); // Empty dependency array to run once on mount
+  }, []);
 
-  // Handle "Continue" button in widget mode
+  const parseOffset = (timezone) => {
+    const match = timezone.match(/GMT([+-]\d+(?:\.\d+)?)/);
+    return match ? parseFloat(match[1]) : 0;
+  };
+
   const handleContinue = () => {
     if (!departure || !arrival) {
       alert('Please select departure and arrival airports.');
@@ -46,11 +52,9 @@ function FlightSearchForm({ isWidget = false }) {
     setExpanded(true);
   };
 
-  // Handle form submission
   const handleSubmit = async (e) => {
     e.preventDefault();
 
-    // Validation
     if (!departure || !arrival || !departureDate) {
       alert('Please fill in all required fields.');
       return;
@@ -65,21 +69,31 @@ function FlightSearchForm({ isWidget = false }) {
     }
 
     try {
-      // Prepare API parameters with ICAO codes
-      const params = {
-        origin: departure,
-        destination: arrival,
-        date: departureDate,
-        passengers,
+      const offset = parseOffset(departureTimezone);
+      const localStart = new Date(departureDate.setHours(0, 0, 0, 0));
+      const localEnd = new Date(departureDate.setHours(23, 59, 59, 999));
+      const utcStart = new Date(localStart.getTime() - offset * 3600000);
+      const utcEnd = new Date(localEnd.getTime() - offset * 3600000);
+
+      let params = {
+        'origin__icao_code': departure,
+        'destination__icao_code': arrival,
+        'departure_time__gte': utcStart.toISOString(),
+        'departure_time__lt': utcEnd.toISOString(),
       };
-      if (tripType === 'return') {
-        params.returnDate = returnDate;
+
+      if (flexibleDates) {
+        const flexStart = new Date(localStart.getTime() - 5 * 24 * 3600000);
+        const flexEnd = new Date(localEnd.getTime() + 5 * 24 * 3600000);
+        params['departure_time__gte'] = flexStart.toISOString();
+        params['departure_time__lt'] = flexEnd.toISOString();
       }
 
-      // Make API call
-      const response = await axios.get('/api/flights/flights', { params });
+      if (tripType === 'return') {
+        params.returnDate = returnDate.toISOString().split('T')[0];
+      }
 
-      // Navigate to flight list page
+      const response = await axios.get('/api/flights/flights', { params });
       navigate('/flights', { state: { flights: response.data, tripType } });
     } catch (error) {
       console.error('Error searching flights:', error);
@@ -88,115 +102,139 @@ function FlightSearchForm({ isWidget = false }) {
   };
 
   return (
-    <Form onSubmit={handleSubmit}>
-      <Row>
-        <Col md={6}>
-          <Form.Group controlId="departure">
-            <Form.Label>Departure Airport</Form.Label>
-            <Form.Select
-              value={departure}
-              onChange={(e) => setDeparture(e.target.value)}
-            >
-              <option value="">Select departure airport</option>
-              {airports.length > 0 ? (
-                airports.map((airport) => (
-                  <option key={airport.id} value={airport.icao_code}>
-                    {airport.icao_code} - {airport.name}
-                  </option>
-                ))
-              ) : (
-                <option disabled>No airports available</option>
-              )}
-            </Form.Select>
-          </Form.Group>
-        </Col>
-        <Col md={6}>
-          <Form.Group controlId="arrival">
-            <Form.Label>Arrival Airport</Form.Label>
-            <Form.Select
-              value={arrival}
-              onChange={(e) => setArrival(e.target.value)}
-            >
-              <option value="">Select arrival airport</option>
-              {airports.length > 0 ? (
-                airports.map((airport) => (
-                  <option key={airport.id} value={airport.icao_code}>
-                    {airport.icao_code} - {airport.name}
-                  </option>
-                ))
-              ) : (
-                <option disabled>No airports available</option>
-              )}
-            </Form.Select>
-          </Form.Group>
-        </Col>
-      </Row>
+    <div className="flight-search-container">
+      <Form onSubmit={handleSubmit} className="flight-search-form">
+        <Row>
+          <Col md={6}>
+            <Form.Group controlId="departure">
+              <Form.Label>Departure Airport</Form.Label>
+              <Form.Select
+                value={departure}
+                onChange={(e) => {
+                  setDeparture(e.target.value);
+                  const selectedAirport = airports.find(a => a.icao_code === e.target.value);
+                  if (selectedAirport) {
+                    setDepartureTimezone(selectedAirport.timezone);
+                  }
+                }}
+              >
+                <option value="">Select departure airport</option>
+                {airports.length > 0 ? (
+                  airports.map((airport) => (
+                    <option key={airport.id} value={airport.icao_code}>
+                      {airport.icao_code} - {airport.name}
+                    </option>
+                  ))
+                ) : (
+                  <option disabled>No airports available</option>
+                )}
+              </Form.Select>
+            </Form.Group>
+          </Col>
+          <Col md={6}>
+            <Form.Group controlId="arrival">
+              <Form.Label>Arrival Airport</Form.Label>
+              <Form.Select
+                value={arrival}
+                onChange={(e) => setArrival(e.target.value)}
+              >
+                <option value="">Select arrival airport</option>
+                {airports.length > 0 ? (
+                  airports.map((airport) => (
+                    <option key={airport.id} value={airport.icao_code}>
+                      {airport.icao_code} - {airport.name}
+                    </option>
+                  ))
+                ) : (
+                  <option disabled>No airports available</option>
+                )}
+              </Form.Select>
+            </Form.Group>
+          </Col>
+        </Row>
 
-      {isWidget && !expanded ? (
-        <Button variant="secondary" onClick={handleContinue} className="mt-3">
-          Continue
-        </Button>
-      ) : (
-        <>
-          <Row className="mt-3">
-            <Col md={6}>
-              <Form.Group controlId="tripType">
-                <Form.Label>Trip Type</Form.Label>
-                <Form.Select
-                  value={tripType}
-                  onChange={(e) => setTripType(e.target.value)}
-                >
-                  <option value="one-way">One Way</option>
-                  <option value="return">Return</option>
-                </Form.Select>
-              </Form.Group>
-            </Col>
-          </Row>
-          <Row className="mt-3">
-            <Col md={6}>
-              <Form.Group controlId="departureDate">
-                <Form.Label>Departing Date</Form.Label>
-                <Form.Control
-                  type="date"
-                  value={departureDate}
-                  onChange={(e) => setDepartureDate(e.target.value)}
-                  min={today}
-                />
-              </Form.Group>
-            </Col>
-            {tripType === 'return' && (
+        {isWidget && !expanded ? (
+          <Button variant="danger" onClick={handleContinue} className="mt-3 w-100">
+            Continue
+          </Button>
+        ) : (
+          <>
+            <Row className="mt-3">
               <Col md={6}>
-                <Form.Group controlId="returnDate">
-                  <Form.Label>Returning Date</Form.Label>
-                  <Form.Control
-                    type="date"
-                    value={returnDate}
-                    onChange={(e) => setReturnDate(e.target.value)}
-                    min={departureDate || today}
+                <Form.Group controlId="tripType">
+                  <Form.Label>Trip Type</Form.Label>
+                  <Form.Select
+                    value={tripType}
+                    onChange={(e) => setTripType(e.target.value)}
+                  >
+                    <option value="one-way">One Way</option>
+                    <option value="return">Return</option>
+                  </Form.Select>
+                </Form.Group>
+              </Col>
+            </Row>
+            <Row className="mt-3">
+              <Col md={6}>
+                <Form.Group controlId="departureDate">
+                  <Form.Label>Departing Date</Form.Label>
+                  <DatePicker
+                    selected={departureDate}
+                    onChange={(date) => setDepartureDate(date)}
+                    minDate={today}
+                    className="form-control"
+                    dateFormat="MMMM d, yyyy"
+                    placeholderText="Select departure date"
                   />
                 </Form.Group>
               </Col>
-            )}
-          </Row>
-          <Row className="mt-3">
-            <Col md={6}>
-              <Form.Group controlId="passengers">
-                <Form.Label>Passengers</Form.Label>
-                <Form.Control
-                  type="number"
-                  value={passengers}
-                  onChange={(e) => setPassengers(e.target.value)}
-                  min="1"
-                />
-              </Form.Group>
-            </Col>
-          </Row>
-          <Button variant="primary" type="submit" className="mt-3">
-            Search Flights
-          </Button>
-        </>
-      )}
-    </Form>
+              {tripType === 'return' && (
+                <Col md={6}>
+                  <Form.Group controlId="returnDate">
+                    <Form.Label>Returning Date</Form.Label>
+                    <DatePicker
+                      selected={returnDate}
+                      onChange={(date) => setReturnDate(date)}
+                      minDate={departureDate || today}
+                      className="form-control"
+                      dateFormat="MMMM d, yyyy"
+                      placeholderText="Select return date"
+                    />
+                  </Form.Group>
+                </Col>
+              )}
+            </Row>
+            <Row className="mt-3">
+              <Col md={6}>
+                <Form.Group controlId="flexibleDates">
+                  <Form.Check
+                    type="checkbox"
+                    label="My dates are flexible (+/- 5 days)"
+                    checked={flexibleDates}
+                    onChange={(e) => setFlexibleDates(e.target.checked)}
+                  />
+                </Form.Group>
+              </Col>
+            </Row>
+            <Row className="mt-3">
+              <Col md={6}>
+                <Form.Group controlId="passengers">
+                  <Form.Label>Passengers</Form.Label>
+                  <Form.Control
+                    type="number"
+                    value={passengers}
+                    onChange={(e) => setPassengers(e.target.value)}
+                    min="1"
+                  />
+                </Form.Group>
+              </Col>
+            </Row>
+            <Button variant="danger" type="submit" className="mt-3 w-100">
+              Search Flights
+            </Button>
+          </>
+        )}
+      </Form>
+    </div>
   );
 }
 
