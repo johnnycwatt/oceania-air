@@ -12,7 +12,7 @@ class AircraftSerializer(serializers.ModelSerializer):
         fields = ['id', 'model', 'capacity', 'registration_number', 'status']
 
 class FlightSerializer(serializers.ModelSerializer):
-    aircraft = serializers.PrimaryKeyRelatedField(queryset=Aircraft.objects.all())
+    aircraft = AircraftSerializer(read_only=True) 
     origin = AirportSerializer(read_only=True)
     destination = AirportSerializer(read_only=True)
     origin_id = serializers.PrimaryKeyRelatedField(queryset=Airport.objects.all(), source='origin', write_only=True)

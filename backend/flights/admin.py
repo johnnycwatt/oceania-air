@@ -17,7 +17,19 @@ class FlightAdmin(admin.ModelAdmin):
             'description': 'Enter times in UTC using the format: YYYY-MM-DD HH:MM:SS (24-hour time, e.g., 2023-10-25 14:30:00).',
         }),
     )
-
+    
+    # Display key fields in the list view
+    list_display = ('flight_number', 'origin', 'destination', 'departure_time', 'status')
+    
+    # Add filters for quick sorting
+    list_filter = ('status', 'origin', 'destination')
+    
+    # Enable search by flight number and airport codes
+    search_fields = ('flight_number', 'origin__icao_code', 'destination__icao_code')
+    
+    # Sort flights by departure time by default
+    ordering = ('departure_time',)
+    
 
 admin.site.register(Airport)
 admin.site.register(Aircraft)
