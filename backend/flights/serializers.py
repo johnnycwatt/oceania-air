@@ -12,19 +12,21 @@ class AircraftSerializer(serializers.ModelSerializer):
         fields = ['id', 'model', 'capacity', 'registration_number', 'status']
 
 class FlightSerializer(serializers.ModelSerializer):
-    aircraft = AircraftSerializer(read_only=True) 
+    aircraft = AircraftSerializer(read_only=True)
     origin = AirportSerializer(read_only=True)
     destination = AirportSerializer(read_only=True)
     origin_id = serializers.PrimaryKeyRelatedField(queryset=Airport.objects.all(), source='origin', write_only=True)
     destination_id = serializers.PrimaryKeyRelatedField(queryset=Airport.objects.all(), source='destination', write_only=True)
+    aircraft_id = serializers.PrimaryKeyRelatedField(queryset=Aircraft.objects.all(), source='aircraft', write_only=True)
 
     class Meta:
         model = Flight
         fields = [
             'id', 'flight_number', 'origin', 'destination', 'departure_time',
             'arrival_time', 'aircraft', 'capacity', 'seats_available', 'price', 'status',
-            'origin_id', 'destination_id'
+            'origin_id', 'destination_id', 'aircraft_id'
         ]
+
     def validate(self, data):
         if data['origin'] == data['destination']:
             raise serializers.ValidationError("Origin and destination cannot be the same.")
